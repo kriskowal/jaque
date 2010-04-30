@@ -1,0 +1,8 @@
+
+
+0.0.1
+
+ * Renamed ComponentMap back to Branch
+ * Renamed Redirect to PermanentRedirect
+ * Introduced TemporaryRedirect
+ * Intorduced PostJson

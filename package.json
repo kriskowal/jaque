@@ -1,11 +1,11 @@
 {
     "name": "jaque",
     "description": "A Q-JSGI framework for web applications on Node with Narwhal",
-    "version": "0.0.0",
+    "version": "0.0.1",
     "dependencies": {
         "jack": "0.2.4",
-        "narwhal-lib": "0.2.2experimental",
-        "node-narwhal": "0.0.0experimental",
+        "narwhal-lib": "0.2.3",
+        "node-narwhal": "0.0.1",
         "node": "0.1.92"
     }
     "author": {
