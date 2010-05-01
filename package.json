@@ -1,13 +1,15 @@
 {
     "name": "jaque",
     "description": "A Q-JSGI framework for web applications on Node with Narwhal",
-    "version": "0.0.1",
+    "version": "0.0.0",
     "dependencies": {
-        "jack": "0.2.4",
-        "narwhal-lib": "0.2.3",
-        "node-narwhal": "0.0.1",
-        "node": "0.1.92"
-    }
+        "jack": "0.0.0",
+        "narwhal-lib": "0.0.0",
+        "node-narwhal": "0.0.0"
+    },
+    "engines": [
+        "node"
+    ],
     "author": {
         "name": "Kris Kowal",
         "email": "kris@cixar.com",
@@ -26,8 +28,12 @@
         {
             "type": "-x-narwhal-github",
             "user": "kriskowal",
-            "name": "jaque",
-            "ref": "v0.0.0"
+            "name": "jaque"
         }
-    ]
+    ],
+    "narwhal": {
+        "engines": {
+            "node": "0.1.92"
+        }
+    }
 }
