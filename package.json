@@ -1,39 +1,36 @@
 {
     "name": "jaque",
-    "description": "A Q-JSGI framework for web applications on Node with Narwhal",
-    "version": "0.0.0",
-    "dependencies": {
-        "jack": "0.0.0",
-        "narwhal-lib": "0.0.0",
-        "node-narwhal": "0.0.0"
-    },
-    "engines": [
-        "node"
+    "description": "An experimental Q-JSGI framework.",
+    "version": "0.1.0",
+    "homepage": "http://github.com/kriskowal/jaque/",
+    "contributors": [
+        "Kris Kowal <kris@cixar.com> (http://github.com/kriskowal/)",
+        "Tom Robinson (http://tlrobinson.net/) <tom@280north.com>"
     ],
-    "author": {
-        "name": "Kris Kowal",
-        "email": "kris@cixar.com",
-        "web": "http://askawizard.blogspot.com"
+    "bugs": {
+        "mail": "kris@cixar.com",
+        "web": "http://github.com/kriskowal/jaque/issues"
     },
     "licenses": [
         {
-            "type": "MIT"
+            "type": "MIT",
+            "url": "http://github.com/kriskowal/jaque/raw/master/LICENSE"
         }
     ],
-    "repositories": [
-        {
-            "type": "git",
-            "url": "https://kriskowal@github.com/kriskowal/jaque.git"
-        },
-        {
-            "type": "-x-narwhal-github",
-            "user": "kriskowal",
-            "name": "jaque"
-        }
-    ],
-    "narwhal": {
-        "engines": {
-            "node": "0.1.92"
-        }
+    "repository": {
+        "type": "git",
+        "url": "http://github.com/kriskowal/jaque.git"
+    },
+    "main": "lib/jaque.js",
+    "dependencies": {
+        "util": ">=0.0.0",
+        "q-http": ">=0.0.0",
+        "q-util": ">=0.0.0",
+        "q-fs": ">=0.0.1",
+        "mimeparse": ">=0.1.2",
+        "uuid": ">=0.0.2"
+    },
+    "engines": {
+        "node": ">=0.2.0"
     }
 }

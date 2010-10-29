@@ -1,0 +1,300 @@
+
+Jaque
+=====
+
+An experimental Q-JSGI framework, based on Node, Jack, and Q
+promises.  Jaque provides adapters for routing, responders,
+sessions, static file trees, common content types, and
+middleware.  The Q-HTTP package provides the basic server
+component.
+
+
+The General Idea
+================
+
+    var HTTP = require("q-http");
+    var JAQUE = require("jaque");
+
+    var app = JAQUE.Branch({
+        "": JAQUE.Method({
+            "GET": function (request) {
+                return {
+                    "status": 200,
+                    "headers": {"content-type": "text/plain"},
+                    "body": ["Hello, World!\r\n"]
+                };
+            })
+        })
+    }, JAQUE.notFound);
+
+
+Installation
+============
+
+    npm install jaque
+
+
+The API
+=======
+
+End(app, notFound)
+
+    Makes a  Q-JSGI app that only responds when there is
+    nothing left on the path to route.  If the there is
+    unprocessed data on the path, the returned app either
+    forwards to the `notFound` app or returns a `404 Not
+    Found` response.
+
+    @param {App} app a Q-JSGI application to respond to this
+    end of the routing chain.
+
+    @param {App} notFound (optional) defaults to the
+    `notFound` app.
+
+    @returns {App}
+
+Branch(paths, notFound)
+
+    Makes a Q-JSGI app that branches requests based on the
+    next unprocessed path component.
+
+    @param {Object * App} paths a mapping from path
+    components (single file or directory names) to Q-JSGI
+    applications for subsequent routing.  The mapping may be
+    a plain JavaScript `Object` record, which must own the
+    mapping properties, or an object that has `has(key)` and
+    `get(key)` methods in its prototype chain.
+
+    @param {App} notFound a Q-JSGI application that handles
+    requests for which the next file name does not exist in
+    paths.
+
+    @returns {App}
+
+Method(methods, methodNotAllowed_opt)
+
+    Routes based on HTTP method.
+
+    @param {Object * App} methods
+    @param {App} notAllowed (optional)
+    @returns {App}
+
+Accept(types, notAcceptable)
+
+    Routes based on content negotiation, between the
+    request's `accept` header and the application's list of
+    possible content types.
+
+    @param {Object * App} types mapping content types to
+    apps that can handle them.
+    @param {App} notAcceptable
+    @returns {App}
+
+FirstFound(apps)
+
+    Returns the response of the first application that
+    returns a non-404 resposne status.
+
+    @param {Array * App} apps a cascade of applications to try
+    successively until one of them returns a non-404 status.
+    @returns {App}
+
+
+Sessions
+--------
+
+CookieSession(Session)
+
+    Creates a persistent session associated with the HTTP
+    client's cookie.  These sessions are intended to persist
+    for the duration that a user visits your site in the
+    same browser.
+    
+    @param {Function(session):App} Session a function that
+    creates a new Q-JSGI application for each new session.
+    @returns {App}
+    
+PathSession(Session)
+
+    A Q-JSGI application that creates a session associated
+    with a unique path.  These sessions are intended to
+    persist for the duration that a user remains in a single
+    browser window.
+
+    @param {Function(session):App} a function that creates a
+    new Q-JSGI application for each new session.  It
+    receives an object with the session's `id` and
+    `lastAccess` `Date`.
+    @returns {App}
+
+
+Content
+-------
+
+Content(body, contentType="text/plain", status=200)
+
+    Makes an app that returns a response with static content
+    from memory.
+
+    @param {Body} body a Q-JSGI response body
+    @param {String} contentType
+    @param {Number} status
+    @returns {App} a Q-JSGI app
+
+ContentLength(app)
+
+    Decorates a Q-JSGI application, such that responses have
+    a `"content-length"` header.  This causes the response
+    content to be accumulated instead of streamed.  If a
+    response already has a `"content-length"` or
+    `"transfer-encoding"` header, it is passed through
+    unaltered.
+
+    @param {App} app
+    @returns {App}
+
+File(path, contentType)
+
+    Hosts a single file, at a given path, with the given
+    content type.
+
+    @param {String} path
+    @param {String} contentType
+    @returns {App}
+
+FileTree(root, options)
+
+    Hosts a file tree.
+
+    /!\ WARNING: does not yet verify that the canonical
+    path of the root contains the canonical path of the
+    requested file.
+
+    @param {String} path
+    @param {{notFound, file, directory, contentType}} options
+    @returns {App}
+
+PermanentRedirect(path, status_opt)
+
+    Creates an App that unconditionally responds with
+    a permanent redirect to the given path.
+
+    @param {String} path
+    @param {Number} status
+    @returns {App}
+    
+TemporaryRedirect(path, status=307)
+    
+    Creates an App that unconditionally responds with
+    a temporary redirect to the given path.
+
+    @param {String} path
+    @param {Number} status (optional) default is `307`
+    @returns {App}
+
+
+Middleware
+----------
+
+Error(app)
+
+    Decorates a JSGI application such that rejected response
+    promises get translated into `500` server error responses
+    with no content.
+
+    @param {App} app
+    @returns {App}
+
+Log(app)
+
+    Decorates a Q-JSGI application such that all requests and
+    responses are logged.
+
+    @param {App} app
+    @returns {App}
+
+Decorators(decorators, app)
+
+    Wraps a Q-JSGI application in a sequence of decorators.
+    @param {Array * Decorator} decorators
+    @param {App} app
+    @returns {App}
+
+
+Adapters
+--------
+
+Json(app)
+
+    Wraps a Q-JSGI application such that the child
+    application may simply return an object, which will in
+    turn be serialized into a Q-JSGI response.
+
+    @param {Function(Request):Object} app an application
+    that accepts a request and returns a JSON serializable
+    object.
+    @returns {App}
+
+PostJson(app, badRequest_opt)
+
+    Wraps an app such that it expects to receive a JSON
+    object in the HTTP POST body, and passes that object to
+    the child app as a second argument.
+
+    @param {Function(Request, Object):Response} app
+    @param {App} badRequest
+    @returns {App}
+
+Inspect(callback(Request))
+
+    @param {Function(Request):Object}
+    @returns {App}
+
+
+Responders
+----------
+
+badRequest(request)
+    {App} an application that returns a 400 response.
+    
+notFound(request)
+    {App} an application that returns a 404 response.
+
+methodNotAllowed(request)
+    {App} an application that returns a 405 response.
+
+notAcceptable(request)
+    {App} an application that returns a 405 response.
+
+ok(content="", contentType="text/plain", status=200)
+
+    Returns a Q-JSGI response with the given content.
+
+    @param {Body} content (optional) defaults to `[""]`
+    @param {String} contentType (optional) defaults to
+    `"text/plain"`
+    @param {Number} status (optional) defaults to `200`
+    @returns {Response}
+
+file(request, path, contentType)
+    
+    Constructs a JSGI response for a given path,
+    handling E-Tags and client-cache hits.
+
+    @param {Request} request
+    @param {String} path
+    @param {String} contentType
+    @returns {Response}
+
+redirect(location, status)
+
+    @param {String} location
+    @param {Number} status (optional) default is `301`
+    @returns {Response}
+
+json(content, options)
+
+    @param {Object} content data to serialize as JSON
+    @param {{tabs}} options
+    @returns {Response}
+
