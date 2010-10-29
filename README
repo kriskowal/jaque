@@ -235,6 +235,15 @@ Json(app)
     object.
     @returns {App}
 
+PostContent(app)
+
+    Wraps an app such that it expects to receive content
+    in the request body and passes that content as a string
+    to as the second argument to the wrapped JSGI app.
+
+    @param {Function(Request, Object):Response} app
+    @returns {App}
+
 PostJson(app, badRequest_opt)
 
     Wraps an app such that it expects to receive a JSON
