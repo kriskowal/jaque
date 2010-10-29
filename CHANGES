@@ -1,4 +1,9 @@
 
+0.1.2
+
+ * Swapped util for n-util in response to new Node module
+   name conflict.
+
 0.1.0
 
  * Reorganized for NPM
