@@ -1,4 +1,9 @@
 
+0.1.7
+
+ - replaced an assertion with a rejection, where
+   Branch routers receive bad pathInfo.
+
 0.1.6
 
  - added FileConcat content app
