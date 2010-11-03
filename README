@@ -188,6 +188,15 @@ FileTree(root, options)
     @param {{notFound, file, directory, contentType}} options
     @returns {App}
 
+FileConcat(fileNames, conctentType)
+
+    Provides an app that responds with a concatenated
+    file from a list of file paths.
+    
+    @param {Array*String} paths
+    @param {String} contentType default`"text/plain"`
+    @returns {App}
+    
 PermanentRedirect(path, status_opt)
 
     Creates an App that unconditionally responds with
