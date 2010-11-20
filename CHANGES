@@ -1,4 +1,8 @@
 
+Next revision
+
+ - Improved the logging format
+
 0.1.7
 
  - replaced an assertion with a rejection, where
