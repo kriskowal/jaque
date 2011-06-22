@@ -1,4 +1,50 @@
 
+DEPRECATED
+----------
+
+The following exports have been renamed.  The old names will disappear
+in the next major, backward-incompatible release.
+
+ - ``End`` is now ``Cap``
+ - ``PostContent`` is now ``ContentRequest``
+ - ``PostJson`` is now ``JsonRequest``
+
+
+History
+-------
+
+0.1.10
+ - WARNING: Removed ``ContentLength`` until further notice.  It is
+   presently broken.
+ - Consolidated all content negotiation under a single implementation
+   and expanded the negotiable parameters to include:
+    - ``ContentType``
+    - ``Language``
+    - ``Charset``
+    - ``Encoding``
+    - ``Host``
+ - Host "negotiation" is now predicated on the host name and the port,
+   separated by colons, and negotiation wildcards are accepted.
+ - Added ``Select`` negotiation, wherein an app is selected and
+   returned by a given function.
+ - Added alternate log function and timestamp function parameters
+   to Log middleware.
+ - Redirectors now accept a default redirect to the same path, which
+   is useful for a ``GET`` following a ``PUT`` or ``POST``.
+ - Aliased the ``ok`` application maker to ``content``.  Both names
+   will remain going forward.
+ - Applications now receive and are obligated to route the response
+   object in addition to the request object.
+ - Renamed End route to Cap route. End is now deprecated.
+ - Renamed PostContent and PostJson to ContentRequest and JsonRequest
+   respectively.  The old names are depreacted aliases.
+ - Added ``Time`` Middleware
+ - Added ``visitor`` and ``tabs`` parameters, as in
+   ``JSON.stringify``, to the ``Json`` middleware.
+ - Withdrew ambition to implement pattern matcher; someone else's job.
+ - Withdrew ambition to implement FileOverlay; better supported by
+   chaining FileTree middleware end to end.
+
 0.1.8
 
  - Improved the logging format

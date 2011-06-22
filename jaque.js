@@ -1,6 +1,4 @@
 
-/*whatsupdoc*/
-
 /**
  * Provides tools for making, routing, adapting, and decorating
  * Q-JSGI web applications.
@@ -45,7 +43,6 @@
     Multiplexing Routing:
         End
         Branch
-        Patterns NYI
         Method
         Accept
         Language
@@ -55,8 +52,11 @@
         ContentLength
         Error
         Log
-        CookieSession
-        PathSession
+        CookieSession TODO reevaluate
+        PathSession TODO reevaluate
+        Limit TODO
+        Cache TODO
+        Time
         Decorators
     Adapters:
         PostJson
@@ -67,9 +67,11 @@
         File
         FileConcat
         FileTree
-        FileOverlay NYI
+        FileOverlay TODO
         PermanentRedirect
         TemporaryRedirect
+        PermanentRedirectTree TODO
+        TemporaryRedirectTree TODO
     Producer Functions:
         ok
         badRequest
@@ -86,7 +88,7 @@
 */
 
 var N_UTIL = require("n-util");
-var Q = require("q-util");
+var Q = require("q");
 var FS = require("q-fs");
 var MIME = require("mimeparse");
 var UUID = require("uuid");
@@ -96,9 +98,9 @@ var URL = require("url");
 var inspect = require("sys").inspect;
 
 // jaque
-var J_UTIL = require("./jaque/util");
-var MIME_TYPES = require("./jaque/mime-types");
-var COOKIE = require("./jaque/cookie");
+var J_UTIL = require("./lib/util");
+var MIME_TYPES = require("./lib/mime-types");
+var COOKIE = require("./lib/cookie");
 
 /**
  * Makes a  Q-JSGI app that only responds when there is nothing left
@@ -112,8 +114,17 @@ var COOKIE = require("./jaque/cookie");
  * to the `notFound` app.
  * @returns {App}
  */
-exports.End = function (app, notFound) {
-    return exports.Branch({"": app}, notFound);
+exports.End =  // Deprecated
+exports.Cap = function (app, notFound) {
+    notFound = notFound || exports.notFound;
+    return function (request, response) {
+        // TODO Distinguish these cases
+        if (request.pathInfo === "" || request.pathInfo === "/") {
+            return app(request, response);
+        } else {
+            return notFound(request, response);
+        } 
+    };
 };
 
 /**
@@ -134,13 +145,9 @@ exports.Branch = function (paths, notFound) {
         paths = {};
     if (!notFound)
         notFound = exports.notFound;
-    return function (request) {
+    return function (request, response) {
         if (!/^\//.test(request.pathInfo)) {
-            return Q.reject(
-                "Cannot branch on partial paths.  The path must begin with " +
-                "'/' at a Branch point. " + JSON.stringify(request.pathInfo) +
-                " at " + JSON.stringify(request.scriptName)
-            );
+            return notFound(request, response);
         }
         var path = request.pathInfo.substring(1);
         var parts = path.split("/");
@@ -148,14 +155,10 @@ exports.Branch = function (paths, notFound) {
         if (N_UTIL.has(paths, part)) {
             request.scriptName = request.scriptName + part + "/";
             request.pathInfo = path.substring(part.length);
-            return N_UTIL.get(paths, part)(request);
+            return N_UTIL.get(paths, part)(request, response);
         }
-        return notFound(request);
+        return notFound(request, response);
     };
-};
-
-exports.Patterns = function (patterns, notFound) {
-    return Q.reject("pattern routing not yet implemented");
 };
 
 /**
@@ -168,7 +171,7 @@ exports.Patterns = function (patterns, notFound) {
  * @returns {App} a Q-JSGI app
  */
 exports.Content = function (body, contentType, status) {
-    return function (request) {
+    return function (request, response) {
         return {
             "status": status || 200,
             "headers": {
@@ -186,9 +189,13 @@ exports.Content = function (body, contentType, status) {
  * @param {Number} status (optional) defaults to `200`
  * @returns {Response}
  */
+exports.content =
 exports.ok = function (content, contentType, status) {
     status = status || 200;
-    content = content || [""];
+    content = content || "";
+    if (typeof content === "string") {
+        content = [content];
+    }
     contentType = contentType || "text/plain";
     return {
         "status": status,
@@ -209,9 +216,9 @@ exports.ok = function (content, contentType, status) {
  * @param {App} app
  * @returns {App}
  */
-exports.ContentLength = function (app) {
-    return function (request) {
-        return Q.when(app(request), function (response) {
+exports.ContentLengthFixmeConflict = function (app) {
+    return function (request, response) {
+        return Q.when(app(request, response), function (response) {
             if (
                 response.headers["content-length"] ||
                 response.headers["transfer-encoding"]
@@ -251,7 +258,7 @@ exports.ContentLength = function (app) {
  * @returns {App}
  */
 exports.File = function (path, contentType) {
-    return function (request) {
+    return function (request, response) {
         return exports.file(request, String(path), contentType);
     };
 };
@@ -265,7 +272,7 @@ exports.File = function (path, contentType) {
  * @returns {App}
  */
 exports.FileConcat = function (fileNames, contentType) {
-    return function (request) {
+    return function (request, response) {
         return {
             "status": 200,
             "headers": {
@@ -299,27 +306,29 @@ exports.FileTree = function (root, options) {
     options.notFound = options.notFound || exports.notFound;
     options.file = options.file || exports.file;
     options.directory = options.directory || exports.directory;
-    return function (request) {
-        var path = FS.join(root, request.pathInfo.substring(1));
-        // TODO FS.contains(FS.canonical(root), FS.canonical(path))
-        return Q.when(FS.stat(path), function (stat) {
-            if (!stat) {
-                return options.notFound(request);
-            } else if (stat.isFile()) {
-                return options.file(request, path, options.contentType);
-            } else if (stat.isDirectory()) {
-                return options.directory(request, path, options.contentType);
-            } else {
-                return options.notFound(request);
-            }
-        }, function (reason) {
-            return options.notFound(request);
+    root = FS.canonical(root);
+    return function (request, response) {
+        return Q.when(root, function (root) {
+            var path = FS.join(root, request.pathInfo.substring(1));
+            return Q.when(FS.canonical(path), function (path) {
+                if (!FS.contains(root, path))
+                    return options.notFound(request, response);
+                return Q.when(FS.stat(path), function (stat) {
+                    if (!stat) {
+                        return options.notFound(request, response);
+                    } else if (stat.isFile()) {
+                        return options.file(request, path, options.contentType);
+                    } else if (stat.isDirectory()) {
+                        return options.directory(request, path, options.contentType);
+                    } else {
+                        return options.notFound(request, response);
+                    }
+                }, function (reason) {
+                    return options.notFound(request, response);
+                });
+            });
         });
     };
-};
-
-exports.FileOverlay = function (roots, options) {
-    throw new Error("NYI");
 };
 
 /**
@@ -373,11 +382,12 @@ exports.directory = function (request, path) {
 
 /**
  * @param {String} path
- * @param {Number} status
+ * @param {Number} status (optional) default is `301`
  * @returns {App}
  */
 exports.PermanentRedirect = function (path, status) {
-    return function (request) {
+    path = path || "";
+    return function (request, response) {
         var location = URL.resolve(request.url, path);
         return exports.redirect(location, status);
     };
@@ -389,9 +399,10 @@ exports.PermanentRedirect = function (path, status) {
  * @returns {App}
  */
 exports.TemporaryRedirect = function (path, status) {
-    return function (request) {
-        var scriptInfo = URL.resolve(request.url, path);
-        return exports.redirect(scriptInfo, status || 307);
+    path = path || "";
+    return function (request, response) {
+        var location = URL.resolve(request.url, path);
+        return exports.redirect(location, status || 307);
     };
 };
 
@@ -411,7 +422,7 @@ exports.redirect = function (location, status) {
             "content-type": "text/html"
         },
         "body": [
-            'Go to <a href="' + location + '">' +
+            'Go to <a href="' + location + '">' + // TODO escape
             location +
             "</a>"
         ]
@@ -428,13 +439,46 @@ exports.Method = function (methods, methodNotAllowed) {
     var keys = Object.keys(methods);
     if (!methodNotAllowed)
         methodNotAllowed = exports.methodNotAllowed;
-    return function (request) {
+    return function (request, response) {
         var method = request.method;
         if (N_UTIL.has(keys, method)) {
-            return N_UTIL.get(methods, method)(request);
+            return N_UTIL.get(methods, method)(request, response);
         } else {
-            return methodNotAllowed(request);
+            return methodNotAllowed(request, response);
         }
+    };
+};
+
+var Negotiator = function (requestHeader, responseHeader, respond) {
+    return function (types, notAcceptable) {
+        var keys = Object.keys(types);
+        if (!notAcceptable)
+            notAcceptable = exports.notAcceptable;
+        return function (request, response) {
+            var header = requestHeader;
+            if (typeof header === "function") {
+                header = requestHeader(request);
+            }
+            var accept = request.headers[requestHeader] || "*";
+            var type = MIME.bestMatch(keys, accept);
+            request.terms = request.terms || {};
+            request.terms[responseHeader] = type;
+            if (N_UTIL.has(keys, type)) {
+                return Q.when(types[type](request, response), function (response) {
+                    if (
+                        respond !== null &&
+                        response &&
+                        response.status === 200 &&
+                        response.headers
+                    ) {
+                        response.headers[responseHeader] = type;
+                    }
+                    return response;
+                });
+            } else {
+                return notAcceptable(request, response);
+            }
+        };
     };
 };
 
@@ -448,24 +492,33 @@ exports.Method = function (methods, methodNotAllowed) {
  * @param {App} notAcceptable
  * @returns {App}
  */
-exports.Accept = function (types, notAcceptable) {
-    var keys = Object.keys(types);
-    if (!notAcceptable)
-        notAcceptable = exports.notAcceptable;
-    return function (request) {
-        var accept = request.headers["accept"] || "";
-        var type = MIME.bestMatch(keys, accept);
-        if (N_UTIL.has(keys, type)) {
-            return types[type](request);
-        } else {
-            return notAcceptable(request);
-        }
+exports.ContentType = Negotiator("accept", "content-type");
+exports.Language = Negotiator("accept-language", "language");
+exports.Charset = Negotiator("accept-charset", "charset");
+exports.Encoding = Negotiator("accept-encoding", "encoding");
+exports.Host = Negotiator(function (request) {
+    return (request.headers.host || "*") + ":" + request.port;
+}, "host", null);
+
+// Branch on a selector function based on the request
+exports.Select = function (select) {
+    return function (request, response) {
+        return Q.when(select(request, response), function (app) {
+            return app(request, response);
+        });
     };
 };
 
-/// branch on Language
-exports.Language = function (languages, noLanguage) {
-    return Q.reject("Language branching not yet implemented");
+// Create an application from the "app" exported by a module
+exports.require = function (id, _require) {
+    _require = _require || require;
+    var async = _require.async || _require;
+    var exports = async(id);
+    return function (request, response) {
+        return Q.when(exports, function (exports) {
+            return exports.app(request, response);
+        });
+    }
 };
 
 /**
@@ -476,10 +529,8 @@ exports.Language = function (languages, noLanguage) {
  * @returns {App}
  */
 exports.Error = function (app) {
-    return function (request) {
-        return Q.when(app(request), function (response) {
-            return response;
-        }, function (error) {
+    return function (request, response) {
+        return Q.when(app(request, response), null, function (error) {
             return J_UTIL.responseForStatus(500, error);
         });
     };
@@ -492,8 +543,12 @@ exports.Error = function (app) {
  * @param {App} app
  * @returns {App}
  */
-exports.Log = function (app) {
-    return function (request) {
+exports.Log = function (app, log, stamp) {
+    log = log || console.log;
+    stamp = stamp || function (message) {
+        return new Date().toISOString() + " " + message;
+    };
+    return function (request, response) {
         var remoteHost =
             request.remoteHost + ":" +
             request.remotePort;
@@ -501,22 +556,67 @@ exports.Log = function (app) {
             request.method + " " +
             request.path + " " +
             "HTTP/" + request.version.join(".");
-        console.log(
-            new Date().toISOString() + " " +
+        log(stamp(
             remoteHost + " " +
             "-->     " + 
             requestLine
-        );
-        return Q.when(app(request), function (response) {
-            console.log(
-                new Date().toISOString() + " " +
-                remoteHost + " " +
-                "<== " + 
-                response.status + " " +
-                requestLine + " " +
-                (response.headers["content-length"] || "-")
-            );
+        ));
+        return Q.when(app(request, response), function (response) {
+            if (response) {
+                log(stamp(
+                    remoteHost + " " +
+                    "<== " + 
+                    response.status + " " +
+                    requestLine + " " +
+                    (response.headers["content-length"] || "-")
+                ));
+            } else {
+                log(stamp(
+                    remoteHost + " " +
+                    "... " +
+                    "... " + 
+                    requestLine + " (response undefined / presumed streaming)"
+                ));
+            }
             return response;
+        }, function (reason) {
+            stamp(
+                log,
+                remoteHost + " " +
+                "!!! " + 
+                requestLine + " " +
+                (reason && reason.message || reason)
+            );
+        });
+    };
+};
+
+/**
+ * Decorates a Q-JSGI application such that all responses have an 
+ * X-Response-Time header with the time between the request and the
+ * response in milliseconds, not including any time needed to stream
+ * the body to the client.
+ *
+ * @param {App} app
+ * @returns {App}
+ */
+exports.Time = function (app) {
+    return function (request, response) {
+        var start = new Date();
+        return Q.when(app(request, response), function (response) {
+            var stop = new Date();
+            if (response && response.headers) {
+                response.headers['x-response-time'] = '' + (stop - start);
+            }
+            return response;
+        }, function (reason) {
+            stamp(
+                log,
+                remoteHost + " " +
+                "!!! " + 
+                requestLine + " " +
+                (reason && reason.message || reason)
+            );
         });
     };
 };
@@ -543,23 +643,23 @@ exports.Decorators = function (decorators, app) {
  * request and returns a JSON serializable object.
  * @returns {App}
  */
-exports.Json = function (app) {
-    return function (request) {
-        return Q.when(app(request), function (object) {
-            return exports.json(object);
+exports.Json = function (app, visitor, tabs) {
+    return function (request, response) {
+        return Q.when(app(request, response), function (object) {
+            return exports.json(object, visitor, tabs);
         });
     };
 };
 
 /**
  * @param {Object} content data to serialize as JSON
- * @param {{tabs}} options
+ * @param {Function} visitor
+ * @param {Number|String} tabs
  * @returns {Response}
  */
-exports.json = function (content, options) {
-    options = options || {};
+exports.json = function (content, visitor, tabs) {
     try {
-        var json = JSON.stringify(content, null, options.tabs);
+        var json = JSON.stringify(content, visitor, tabs);
     } catch (exception) {
         return Q.reject(exception);
     }
@@ -574,11 +674,12 @@ exports.json = function (content, options) {
  * @param {Function(Request, Object):Response} app
  * @returns {App}
  */
-exports.PostContent = function (app) {
-    return function (request) {
+exports.PostContent =
+exports.ContentRequest = function (app) {
+    return function (request, response) {
         return Q.when(request.body, function (body) {
             return Q.when(body.read(), function (body) {
-                return app(request, body);
+                return app(body, request, response);
             });
         });
     };
@@ -589,16 +690,17 @@ exports.PostContent = function (app) {
  * @param {App} badRequest
  * @returns {App}
  */
-exports.PostJson = function (app, badRequest) {
+exports.PostJson =
+exports.JsonRequest = function (app, badRequest) {
     if (!badRequest)
         badRequest = exports.badRequest;
-    return exports.PostContent(function (request, body) {
+    return exports.ContentRequest(function (content, request, response) {
         try {
-            var object = JSON.parse(body);
+            var object = JSON.parse(content);
         } catch (error) {
             return badRequest(request, error);
         }
-        return app(request, object);
+        return app(object, request, response);
     });
 };
 
@@ -607,8 +709,8 @@ exports.PostJson = function (app, badRequest) {
  * @returns {App}
  */
 exports.Inspect = function (app) {
-    return exports.Method({"GET": function (request) {
-        return Q.when(app(request), function (object) {
+    return exports.Method({"GET": function (request, response) {
+        return Q.when(app(request, response), function (object) {
             return {
                 "status": 200,
                 "headers": {
@@ -638,7 +740,7 @@ exports.CookieSession = function (Session) {
                 return uuid;
         }
     }
-    return function (request) {
+    return function (request, response) {
         var cookie = COOKIE.parse(request.headers["cookie"]);
         var sessionIds = cookie["session.id"];
         if (!Array.isArray(sessionIds))
@@ -649,7 +751,7 @@ exports.CookieSession = function (Session) {
         // verifying cookie
         if (/^\/~session\//.test(request.pathInfo)) {
             if (cookie["session.id"])
-                return exports.TemporaryRedirect("../")(request);
+                return exports.TemporaryRedirect("../")(request, response);
             // TODO more flexible session error page
             return {
                 "status": 404,
@@ -668,7 +770,7 @@ exports.CookieSession = function (Session) {
             var session = sessions[sessionIds[0]];
             session.lastAccess = new Date();
             request.session = session;
-            return session.route(request);
+            return session.route(request, response);
         // new session
         } else {
             var session = {
@@ -677,7 +779,7 @@ exports.CookieSession = function (Session) {
             };
             sessions[session.id] = session;
             session.route = Session(session);
-            var response = exports.TemporaryRedirect(request.scriptInfo + "~session/")(request);
+            var response = exports.TemporaryRedirect(request.scriptInfo + "~session/")(request, response);
             response.headers["set-cookie"] = COOKIE.format(
                 "session.id", session.id, {
                     "path": request.scriptInfo
@@ -707,7 +809,7 @@ exports.PathSession = function (Session) {
                 return uuid;
         }
     }
-    return function (request) {
+    return function (request, response) {
         // TODO request.pathInfo and request.scriptInfo
         if (request.pathInfo == "/") {
             // new session
@@ -717,11 +819,11 @@ exports.PathSession = function (Session) {
             };
             sessions[session.id] = session;
             session.route = Session(session);
-            return exports.Json(function (request) {
+            return exports.Json(function (request, response) {
                 return session;
-            })(request);
+            })(request, response);
         } else if (N_UTIL.has(sessions, request.pathInfo.substring(1))) {
-            return N_UTIL.get(sessions, request.pathInfo.substring(1)).route(request);
+            return N_UTIL.get(sessions, request.pathInfo.substring(1)).route(request, response);
         } else {
             return exports.responseForStatus(404, "Session does not exist");
         }
@@ -737,10 +839,10 @@ exports.PathSession = function (Session) {
  * @returns {App}
  */
 exports.FirstFound = function (cascade) {
-    return function (request) {
+    return function (request, response) {
         var i = 0, ii = cascade.length;
         function next() {
-            var response = cascade[i++](request);
+            var response = cascade[i++](request, response);
             if (i < ii) {
                 return Q.when(response, function (response) {
                     if (response.status === 404) {
@@ -772,5 +874,6 @@ exports.methodNotAllowed = J_UTIL.appForStatus(405);
 /**
  * {App} an application that returns a 405 response.
  */
+exports.noLanguage = 
 exports.notAcceptable = J_UTIL.appForStatus(406);
 
