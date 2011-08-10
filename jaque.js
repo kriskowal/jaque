@@ -323,9 +323,9 @@ exports.FileTree = function (root, options) {
                     } else {
                         return options.notFound(request, response);
                     }
-                }, function (reason) {
-                    return options.notFound(request, response);
                 });
+            }, function (reason) {
+                return options.notFound(request, response);
             });
         });
     };
