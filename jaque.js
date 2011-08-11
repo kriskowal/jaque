@@ -580,13 +580,13 @@ exports.Log = function (app, log, stamp) {
             }
             return response;
         }, function (reason) {
-            stamp(
+            log(stamp(
                 log,
                 remoteHost + " " +
                 "!!! " + 
                 requestLine + " " +
                 (reason && reason.message || reason)
-            );
+            ));
         });
     };
 };
@@ -609,14 +609,29 @@ exports.Time = function (app) {
                 response.headers['x-response-time'] = '' + (stop - start);
             }
             return response;
-        }, function (reason) {
-            stamp(
-                log,
-                remoteHost + " " +
-                "!!! " + 
-                requestLine + " " +
-                (reason && reason.message || reason)
-            );
+        });
+    };
+};
+
+/**
+ * Decorates a Q-JSGI application such that all responses have the
+ * given additional headers.  These headers do not override the
+ * application's given response headers.
+ *
+ * @param {Object} headers
+ * @param {App} app decorated application.
+ */
+exports.Headers = function (headers, app) {
+    return function (request, response) {
+        return Q.when(app(request, response), function (response) {
+            if (response && response.headers) {
+                Object.keys(headers).forEach(function (key) {
+                    if (!(key in response.headers)) {
+                        response.headers[key] = headers[key];
+                    }
+                });
+            }
+            return response;
         });
     };
 };

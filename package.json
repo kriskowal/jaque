@@ -1,7 +1,7 @@
 {
     "name": "jaque",
+    "version": "0.1.12",
     "description": "An experimental Q-JSGI framework.",
-    "version": "0.1.11",
     "homepage": "http://github.com/kriskowal/jaque/",
     "contributors": [
         "Kris Kowal <kris@cixar.com> (http://github.com/kriskowal/)",
@@ -23,12 +23,12 @@
     },
     "main": "jaque.js",
     "dependencies": {
-        "n-util": ">=0.0.1",
-        "qq": ">=0.2.0",
-        "q-http": ">=0.1.2",
-        "q-fs": ">=0.1.9",
-        "mimeparse": ">=0.1.3",
-        "uuid": ">=0.0.2"
+        "n-util": "0.0.1",
+        "qq": "0.3.1",
+        "q-http": "0.1.2",
+        "q-fs": "0.1.10",
+        "mimeparse": "0.1.3",
+        "uuid": "0.0.2"
     },
     "engines": {
         "node": ">=0.2.0"

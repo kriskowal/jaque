@@ -13,6 +13,12 @@ in the next major, backward-incompatible release.
 History
 -------
 
+0.1.12
+ - Added ``Headers`` middleware for adding headers unspecified by an
+   application.
+ - Coordinated dependency revisions.
+ - Fixed a bug in the file server; 404 responses are now delivered promptly.
+
 0.1.11
  - Added ``text/cache-manifest`` to the ``.manifest`` MIME mapping.
 
