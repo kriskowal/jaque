@@ -344,19 +344,101 @@ exports.file = function (request, path, contentType) {
     );
     return Q.when(FS.stat(path), function (stat) {
         var etag = exports.etag(stat);
-        if (etag === request.headers['if-none-match'])
-            return J_UTIL.responseForStatus(304);
-        return Q.when(FS.open(path), function (stream) {
+        var range; // undefined or {begin, end}
+        var status = 200;
+        var headers = {
+            "content-type": contentType,
+            "etag": etag
+        };
+
+        // Partial range requests
+        if ("range" in request.headers) {
+            // Invalid cache
+            if (
+                "if-range" in request.headers &&
+                etag != request.headers["if-range"]
+            ) {
+                // Normal 200 for entire, altered content
+            } else {
+                // Truncate to the first requested continuous range
+                range = interpretFirstRange(request.headers["range"]);
+                // Like Apache, ignore the range header if it is invalid
+                if (range) {
+                    if (range.end > stat.size)
+                        return J_UTIL.responseForStatus(416); // not satisfiable
+                    status = 206; // partial content
+                    headers["content-range"] = (
+                        "bytes " +
+                        range.begin + "-" + (range.end - 1) +
+                        "/" + stat.size
+                    );
+                    headers["content-length"] = "" + (range.end - range.begin);
+                }
+            }
+        // Full requests
+        } else {
+            // Cached
+            // We do not use date-based caching
+            // TODO consider if-match?
+            if (etag == request.headers["if-none-match"])
+                return J_UTIL.responseForStatus(304);
+            headers["content-length"] = "" + stat.size;
+        }
+
+        // TODO sendfile
+        return Q.when(FS.open(path, range), function (stream) {
             return {
-                "status": 200,
-                "headers": {
-                    "content-type": contentType,
-                    "etag": etag
-                },
+                "status": status,
+                "headers": headers,
                 "body": stream
             };
         });
     });
+};
+
+var rangesExpression = /^\s*bytes\s*=\s*(\d*\s*-\s*\d*\s*(?:,\s*\d*\s*-\s*\d*\s*)*)$/;
+var rangeExpression = /^\s*(\d*)\s*-\s*(\d*)\s*$/;
+
+var interpretRange = function (text, size) {
+    var match = rangeExpression.exec(text);
+    if (!match)
+        return;
+    if (match[1] == "" && match[2] == "")
+        return;
+    var begin, end;
+    if (match[1] == "") {
+        begin = size - match[2];
+        end = size;
+    } else if (match[2] == "") {
+        begin = +match[1];
+        end = size;
+    } else {
+        begin = +match[1];
+        end = +match[2] + 1;
+    }
+    return {
+        "begin": begin,
+        "end": end
+    };
+};
+
+var interpretFirstRange = exports.interpretFirstRange = function (text, size) {
+    var match = rangesExpression.exec(text);
+    if (!match)
+        return;
+    var texts = match[1].split(/\s*,\s*/);
+    var range = interpretRange(texts[0], size);
+    for (var i = 0, ii = texts.length; i < ii; i++) {
+        var next = interpretRange(texts[i], size);
+        if (!next)
+            break;
+        if (next.begin <= range.end) {
+            range.end = next.end;
+        } else {
+            break;
+        }
+    }
+    return range;
 };
 
 /**
@@ -531,7 +613,7 @@ exports.require = function (id, _require) {
 exports.Error = function (app) {
     return function (request, response) {
         return Q.when(app(request, response), null, function (error) {
-            return J_UTIL.responseForStatus(500, error);
+            return J_UTIL.responseForStatus(500, error.stack || error);
         });
     };
 };
@@ -606,7 +688,7 @@ exports.Time = function (app) {
         return Q.when(app(request, response), function (response) {
             var stop = new Date();
             if (response && response.headers) {
-                response.headers['x-response-time'] = '' + (stop - start);
+                response.headers["x-response-time"] = "" + (stop - start);
             }
             return response;
         });
