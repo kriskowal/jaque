@@ -663,12 +663,12 @@ exports.Log = function (app, log, stamp) {
             return response;
         }, function (reason) {
             log(stamp(
-                log,
                 remoteHost + " " +
-                "!!! " + 
+                "!!!     " + 
                 requestLine + " " +
                 (reason && reason.message || reason)
             ));
+            return Q.reject(reason);
         });
     };
 };
