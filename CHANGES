@@ -13,6 +13,12 @@ in the next major, backward-incompatible release.
 History
 -------
 
+0.1.17
+ - Switched internal MIME extension checker to use the "mime"
+   NPM package, which appears to be more thorough on close inspection.
+ - Took advantage of Q-HTTP's ability to handle a promised body
+   in the static file endware.
+
 0.1.16
  - Synchronized dependency for q-fs bug fix for binary encoding.
 

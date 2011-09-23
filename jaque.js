@@ -90,7 +90,8 @@
 var N_UTIL = require("n-util");
 var Q = require("q");
 var FS = require("q-fs");
-var MIME = require("mimeparse");
+var MIME_PARSE = require("mimeparse");
+var MIME_TYPES = require("mime");
 var UUID = require("uuid");
 
 // node
@@ -99,7 +100,6 @@ var inspect = require("sys").inspect;
 
 // jaque
 var J_UTIL = require("./lib/util");
-var MIME_TYPES = require("./lib/mime-types");
 var COOKIE = require("./lib/cookie");
 
 /**
@@ -338,10 +338,7 @@ exports.FileTree = function (root, options) {
  * @returns {Response}
  */
 exports.file = function (request, path, contentType) {
-    contentType = MIME_TYPES.mimeType(
-        FS.extension(path),
-        contentType
-    );
+    contentType = contentType || MIME_TYPES.lookup(path);
     return Q.when(FS.stat(path), function (stat) {
         var etag = exports.etag(stat);
         var range; // undefined or {begin, end}
@@ -386,13 +383,11 @@ exports.file = function (request, path, contentType) {
         }
 
         // TODO sendfile
-        return Q.when(FS.open(path, range), function (stream) {
-            return {
-                "status": status,
-                "headers": headers,
-                "body": stream
-            };
-        });
+        return {
+            "status": status,
+            "headers": headers,
+            "body": FS.open(path, range)
+        };
     });
 };
 
@@ -542,7 +537,7 @@ var Negotiator = function (requestHeader, responseHeader, respond) {
                 header = requestHeader(request);
             }
             var accept = request.headers[requestHeader] || "*";
-            var type = MIME.bestMatch(keys, accept);
+            var type = MIME_PARSE.bestMatch(keys, accept);
             request.terms = request.terms || {};
             request.terms[responseHeader] = type;
             if (N_UTIL.has(keys, type)) {
