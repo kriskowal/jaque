@@ -13,6 +13,9 @@ in the next major, backward-incompatible release.
 History
 -------
 
+0.1.18
+ - Synchronized dependencies for bug fix in IO stream close method.
+
 0.1.17
  - Switched internal MIME extension checker to use the "mime"
    NPM package, which appears to be more thorough on close inspection.
