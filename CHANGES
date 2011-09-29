@@ -13,6 +13,10 @@ in the next major, backward-incompatible release.
 History
 -------
 
+0.1.20
+ - Added support for redirecting entire subtrees where
+   symbolic links are involved, optionally permanently.
+
 0.1.19
  - Added an option to FileTree: redirectSymbolicLinks.
  - Synchronized dependencies for FS.readLink.

@@ -299,7 +299,15 @@ exports.FileConcat = function (fileNames, contentType) {
 
 /**
  * @param {String} path
- * @param {{notFound, file, directory, contentType}} options
+ * @param {{
+       notFound,
+       file,
+       directory,
+       contentType,
+       redirectSymbolicLinks:Boolean,
+       redirect:Function(location),
+       permanent:Boolean
+ * }} options
  * @returns {App}
  */
 exports.FileTree = function (root, options) {
@@ -308,50 +316,32 @@ exports.FileTree = function (root, options) {
     options.notFound = options.notFound || exports.notFound;
     options.file = options.file || exports.file;
     options.directory = options.directory || exports.directory;
+    options.redirect = options.redirect || (
+        options.permanent ?
+        exports.permanentRedirect ?
+        exports.temporaryRedirect
+    );
     root = FS.canonical(root);
     return function (request, response) {
         return Q.when(root, function (root) {
             var path = FS.join(root, request.pathInfo.substring(1));
-
-            if (options.redirectSymbolicLinks) {
-                return Q.when(FS.statLink(path), function (stat) {
-                    if (stat.isSymbolicLink()) {
-                        var deferred = Q.defer();
-                        return Q.when(FS.readLink(path), function (link) {
-                            return exports.redirect(link, 307);
-                        });
+            return Q.when(FS.canonical(path), function (canonical) {
+                if (!FS.contains(root, canonical))
+                    return options.notFound(request, response);
+                if (path !== canonical && options.redirectSymbolicLinks)
+                    return options.redirect(FS.relativeFromFile(path, canonical));
+                return Q.when(FS.stat(canonical), function (stat) {
+                    if (stat.isFile()) {
+                        return options.file(request, canonical, options.contentType);
+                    } else if (stat.isDirectory()) {
+                        return options.directory(request, canonical, options.contentType);
                     } else {
-                        return Q.when(FS.canonical(path), function (path) {
-                            if (!FS.contains(root, path)) {
-                                return options.notFound(request, response);
-                            } else if (stat.isFile()) {
-                                return options.file(request, path, options.contentType);
-                            } else if (stat.isDirectory()) {
-                                return options.directory(request, path, options.contentType);
-                            } else {
-                                return options.notFound(request, response);
-                            }
-                        });
+                        return options.notFound(request, response);
                     }
                 });
-            } else {
-
-                return Q.when(FS.canonical(path), function (path) {
-                    if (!FS.contains(root, path))
-                        return options.notFound(request, response);
-                    return Q.when(FS.stat(path), function (stat) {
-                        if (stat.isFile()) {
-                            return options.file(request, path, options.contentType);
-                        } else if (stat.isDirectory()) {
-                            return options.directory(request, path, options.contentType);
-                        } else {
-                            return options.notFound(request, response);
-                        }
-                    });
-                }, function (reason) {
-                    return options.notFound(request, response);
-                });
-            }
+            }, function (reason) {
+                return options.notFound(request, response);
+            });
         });
     };
 };
@@ -491,7 +481,7 @@ exports.PermanentRedirect = function (path, status) {
     path = path || "";
     return function (request, response) {
         var location = URL.resolve(request.url, path);
-        return exports.redirect(location, status);
+        return exports.permanentRedirect(location, status);
     };
 };
 
@@ -504,7 +494,7 @@ exports.TemporaryRedirect = function (path, status) {
     path = path || "";
     return function (request, response) {
         var location = URL.resolve(request.url, path);
-        return exports.redirect(location, status || 307);
+        return exports.temporaryRedirect(location, status);
     };
 };
 
@@ -513,6 +503,7 @@ exports.TemporaryRedirect = function (path, status) {
  * @param {Number} status (optional) default is `301`
  * @returns {Response}
  */
+exports.permanentRedirect =
 exports.redirect = function (location, status) {
     status = status || 301;
     // TODO assure that the location is fully qualified
@@ -529,6 +520,10 @@ exports.redirect = function (location, status) {
             "</a>"
         ]
     };
+};
+
+exports.temporaryRedirect = function (location, status) {
+    return exports.redirect(location, status || 307);
 };
 
 /// branch on HTTP method

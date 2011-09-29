@@ -1,6 +1,6 @@
 {
     "name": "jaque",
-    "version": "0.1.19",
+    "version": "0.1.20",
     "description": "An experimental Q-JSGI framework.",
     "homepage": "http://github.com/kriskowal/jaque/",
     "contributors": [
