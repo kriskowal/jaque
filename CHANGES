@@ -13,6 +13,10 @@ in the next major, backward-incompatible release.
 History
 -------
 
+0.1.19
+ - Added an option to FileTree: redirectSymbolicLinks.
+ - Synchronized dependencies for FS.readLink.
+
 0.1.18
  - Synchronized dependencies for bug fix in IO stream close method.
 

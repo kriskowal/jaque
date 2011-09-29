@@ -89,7 +89,9 @@
 
 var N_UTIL = require("n-util");
 var Q = require("q");
+var NODE_FS = require("fs");
 var FS = require("q-fs");
+var URL = require("url");
 var MIME_PARSE = require("mimeparse");
 var MIME_TYPES = require("mime");
 var UUID = require("uuid");
@@ -310,23 +312,46 @@ exports.FileTree = function (root, options) {
     return function (request, response) {
         return Q.when(root, function (root) {
             var path = FS.join(root, request.pathInfo.substring(1));
-            return Q.when(FS.canonical(path), function (path) {
-                if (!FS.contains(root, path))
-                    return options.notFound(request, response);
-                return Q.when(FS.stat(path), function (stat) {
-                    if (!stat) {
-                        return options.notFound(request, response);
-                    } else if (stat.isFile()) {
-                        return options.file(request, path, options.contentType);
-                    } else if (stat.isDirectory()) {
-                        return options.directory(request, path, options.contentType);
+
+            if (options.redirectSymbolicLinks) {
+                return Q.when(FS.statLink(path), function (stat) {
+                    if (stat.isSymbolicLink()) {
+                        var deferred = Q.defer();
+                        return Q.when(FS.readLink(path), function (link) {
+                            return exports.redirect(link, 307);
+                        });
                     } else {
-                        return options.notFound(request, response);
+                        return Q.when(FS.canonical(path), function (path) {
+                            if (!FS.contains(root, path)) {
+                                return options.notFound(request, response);
+                            } else if (stat.isFile()) {
+                                return options.file(request, path, options.contentType);
+                            } else if (stat.isDirectory()) {
+                                return options.directory(request, path, options.contentType);
+                            } else {
+                                return options.notFound(request, response);
+                            }
+                        });
                     }
                 });
-            }, function (reason) {
-                return options.notFound(request, response);
-            });
+            } else {
+
+                return Q.when(FS.canonical(path), function (path) {
+                    if (!FS.contains(root, path))
+                        return options.notFound(request, response);
+                    return Q.when(FS.stat(path), function (stat) {
+                        if (stat.isFile()) {
+                            return options.file(request, path, options.contentType);
+                        } else if (stat.isDirectory()) {
+                            return options.directory(request, path, options.contentType);
+                        } else {
+                            return options.notFound(request, response);
+                        }
+                    });
+                }, function (reason) {
+                    return options.notFound(request, response);
+                });
+            }
         });
     };
 };

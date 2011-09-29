@@ -6,10 +6,9 @@ HTTP.Server(
         JAQUE.Error(
             JAQUE.FileTree(
                 module.directory || __dirname,
-                JAQUE.Cap(JAQUE.Content(
-                    ["Hello, World!"],
-                    "text/plain"
-                ))
+                {
+                    redirectSymbolicLinks: true
+                }
             )
         )
     )
