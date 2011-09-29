@@ -318,7 +318,7 @@ exports.FileTree = function (root, options) {
     options.directory = options.directory || exports.directory;
     options.redirect = options.redirect || (
         options.permanent ?
-        exports.permanentRedirect ?
+        exports.permanentRedirect :
         exports.temporaryRedirect
     );
     root = FS.canonical(root);
