@@ -41,7 +41,7 @@
 
 /*
     Multiplexing Routing:
-        End
+        Cap
         Branch
         Method
         Accept
@@ -49,7 +49,6 @@
     Trial Routing:
         FirstFound
     Decorators:
-        ContentLength
         Error
         Log
         CookieSession TODO reevaluate
@@ -58,6 +57,10 @@
         Cache TODO
         Time
         Decorators
+        Tap
+        Trap
+        Permanent
+        Date
     Adapters:
         PostJson
         Json
@@ -65,13 +68,13 @@
     Producers:
         Content
         File
-        FileConcat
         FileTree
-        FileOverlay TODO
+        Redirect
         PermanentRedirect
         TemporaryRedirect
-        PermanentRedirectTree TODO
-        TemporaryRedirectTree TODO
+        RedirectTree
+        PermanentRedirectTree
+        TemporaryRedirectTree
     Producer Functions:
         ok
         badRequest
@@ -90,6 +93,7 @@
 var N_UTIL = require("n-util");
 var Q = require("q");
 var NODE_FS = require("fs");
+var HTTP = require("q-http");
 var FS = require("q-fs");
 var URL = require("url");
 var MIME_PARSE = require("mimeparse");
@@ -116,7 +120,6 @@ var COOKIE = require("./lib/cookie");
  * to the `notFound` app.
  * @returns {App}
  */
-exports.End =  // Deprecated
 exports.Cap = function (app, notFound) {
     notFound = notFound || exports.notFound;
     return function (request, response) {
@@ -127,6 +130,69 @@ exports.Cap = function (app, notFound) {
             return notFound(request, response);
         } 
     };
+};
+
+/**
+ * Wraps an app with a function that will observe incoming requests
+ * before giving the app an opportunity to respond.  If the "tap"
+ * function returns a response, it will be used in lieu of forwarding
+ * the request to the wrapped app.
+ */
+exports.Tap = function (app, tap) {
+    return function (request, response) {
+        var self = this, args = arguments;
+        return Q.when(tap.apply(this, arguments), function (response) {
+            if (response) {
+                return response;
+            } else {
+                return app.apply(self, args);
+            }
+        });
+    };
+}
+
+/**
+ * Wraps an app with a "trap" function that intercepts and may
+ * alter or replace the response of the wrapped application.
+ */
+exports.Trap = function (app, trap) {
+    return function (request, response) {
+        return Q.when(app.apply(this, arguments), function (response) {
+            if (response) {
+                response.headers = response.headers || {};
+                return trap(response, request) || response;
+            }
+        });
+    };
+}
+
+exports.Date = function (app, present) {
+    present = present || function () {
+        return new Date();
+    };
+    return exports.Trap(app, function (response, request) {
+        response.headers["date"] = "" + present();
+    });
+};
+
+var farFuture =
+    1000 * // ms
+    60 * // s
+    60 * // m
+    24 * // h
+    365 * // d
+    10; // years
+exports.Permanent = function (app, future) {
+    future = future || function () {
+        return new Date(new Date().getTime() + farFuture);
+    };
+    app = exports.Tap(app, function (request, response) {
+        request.permanent = future;
+    });
+    app = exports.Trap(app, function (response, request) {
+        response.headers["expires"] = "" + future();
+    });
+    return app;
 };
 
 /**
@@ -209,52 +275,6 @@ exports.ok = function (content, contentType, status) {
 };
 
 /**
- * Decorates a Q-JSGI application, such that responses have a
- * `"content-length"` header.  This causes the response content to be
- * accumulated instead of streamed.  If a response already has a
- * `"content-length"` or `"transfer-encoding"` header, it is passed
- * through unaltered.
- *
- * @param {App} app
- * @returns {App}
- */
-exports.ContentLengthFixmeConflict = function (app) {
-    return function (request, response) {
-        return Q.when(app(request, response), function (response) {
-            if (
-                response.headers["content-length"] ||
-                response.headers["transfer-encoding"]
-            ) {
-                return response;
-            } else {
-                return Q.when(response.body, function (body) {
-                    if (Array.isArray(body)) {
-                        return Q.when(Q.shallow(body), function (body) {
-                            response.body = body;
-                            response.headers["content-length"] = 
-                                String(body.reduce(function (sum, value) {
-                                    return sum + value.length;
-                                }, 0));
-                            return response;
-                        });
-                    } else if (true /* XXX */ || !body.read) {
-                        return response;
-                    } else {
-                        // TODO BUG XXX (does not work for binary data)
-                        return Q.when(body.read(), function (body) {
-                            response.body = [body];
-                            response.headers["content-length"] =
-                                String(body.length);
-                            return response;
-                        });
-                    }
-                });
-            }
-        });
-    };
-};
-
-/**
  * @param {String} path
  * @param {String} contentType
  * @returns {App}
@@ -262,38 +282,6 @@ exports.ContentLengthFixmeConflict = function (app) {
 exports.File = function (path, contentType) {
     return function (request, response) {
         return exports.file(request, String(path), contentType);
-    };
-};
-
-/**
- * Provides an app that responds with a concatenated
- * list of files, based on their paths.
- *
- * @param {Array*String} paths
- * @param {String} contentType
- * @returns {App}
- */
-exports.FileConcat = function (fileNames, contentType) {
-    return function (request, response) {
-        return {
-            "status": 200,
-            "headers": {
-                "content-type": contentType || "text/plain"
-            },
-            "body": {
-                "forEach": function (write) {
-                    return fileNames.map(function (fileName) {
-                        return FS.open(fileName);
-                    }).reduce(function (previousDone, file) {
-                        return Q.when(previousDone, function (input) {
-                            return Q.when(file, function (file) {
-                                return file.forEach(write);
-                            });
-                        });
-                    }, undefined);
-                }
-            }
-        }
     };
 };
 
@@ -316,20 +304,21 @@ exports.FileTree = function (root, options) {
     options.notFound = options.notFound || exports.notFound;
     options.file = options.file || exports.file;
     options.directory = options.directory || exports.directory;
-    options.redirect = options.redirect || (
-        options.permanent ?
-        exports.permanentRedirect :
-        exports.temporaryRedirect
-    );
     root = FS.canonical(root);
     return function (request, response) {
+        var redirect = options.redirect || (
+            request.permanent || options.permanent ?
+            exports.permanentRedirect :
+            exports.temporaryRedirect
+        );
         return Q.when(root, function (root) {
             var path = FS.join(root, request.pathInfo.substring(1));
             return Q.when(FS.canonical(path), function (canonical) {
                 if (!FS.contains(root, canonical))
                     return options.notFound(request, response);
                 if (path !== canonical && options.redirectSymbolicLinks)
-                    return options.redirect(FS.relativeFromFile(path, canonical));
+                    return redirect(request, FS.relativeFromFile(path, canonical));
+                // TODO: relativeFromFile should be designed for URL’s, not generalized paths.
                 return Q.when(FS.stat(canonical), function (stat) {
                     if (stat.isFile()) {
                         return options.file(request, canonical, options.contentType);
@@ -353,6 +342,7 @@ exports.FileTree = function (root, options) {
  * @returns {Response}
  */
 exports.file = function (request, path, contentType) {
+    // TODO last-modified header
     contentType = contentType || MIME_TYPES.lookup(path);
     return Q.when(FS.stat(path), function (stat) {
         var etag = exports.etag(stat);
@@ -477,11 +467,20 @@ exports.directory = function (request, path) {
  * @param {Number} status (optional) default is `301`
  * @returns {App}
  */
-exports.PermanentRedirect = function (path, status) {
-    path = path || "";
+exports.PermanentRedirect = function (location, status, tree) {
     return function (request, response) {
-        var location = URL.resolve(request.url, path);
-        return exports.permanentRedirect(location, status);
+        return exports.permanentRedirect(request, location, status, tree);
+    };
+};
+
+/**
+ * @param {String} path
+ * @param {Number} status (optional) default is `301`
+ * @returns {App}
+ */
+exports.PermanentRedirectTree = function (location, status) {
+    return function (request, response) {
+        return exports.permanentRedirect(request, location, status, true);
     };
 };
 
@@ -490,12 +489,65 @@ exports.PermanentRedirect = function (path, status) {
  * @param {Number} status (optional) default is `307`
  * @returns {App}
  */
-exports.TemporaryRedirect = function (path, status) {
+exports.TemporaryRedirect = function (location, status, tree) {
+    return function (request, response) {
+        return exports.temporaryRedirect(request, location, status, tree);
+    };
+};
+
+/**
+ * @param {String} path
+ * @param {Number} status (optional) default is `307`
+ * @returns {App}
+ */
+exports.TemporaryRedirectTree = function (location, status) {
+    return function (request, response) {
+        return exports.temporaryRedirect(request, location, status, true);
+    };
+};
+
+/**
+ * @param {String} path
+ * @param {Number} status (optional) default is `307`
+ * @returns {App}
+ */
+exports.Redirect = function (path, status, tree) {
     path = path || "";
     return function (request, response) {
-        var location = URL.resolve(request.url, path);
-        return exports.temporaryRedirect(location, status);
+        return exports.redirect(request, location, status, tree);
     };
+};
+
+/**
+ * @param {String} path
+ * @param {Number} status (optional) default is `307`
+ * @returns {App}
+ */
+exports.RedirectTree = function (path, status) {
+    path = path || "";
+    return function (request, response) {
+        return exports.redirect(request, location, status, true);
+    };
+};
+
+exports.permanentRedirect = function (request, location, status) {
+    return exports.redirect(request, location, status || 301);
+};
+
+exports.permanentRedirectTree = function (request, location, status) {
+    return exports.redirect(request, location, status || 301, true);
+};
+
+exports.temporaryRedirect = function (request, location, status) {
+    return exports.redirect(request, location, status || 307);
+};
+
+exports.temporaryRedirectTree = function (request, location, status) {
+    return exports.redirect(request, location, status || 307, true);
+};
+
+exports.redirectTree = function (request, location, status) {
+    return exports.redirect(request, location, status, true);
 };
 
 /**
@@ -503,10 +555,22 @@ exports.TemporaryRedirect = function (path, status) {
  * @param {Number} status (optional) default is `301`
  * @returns {Response}
  */
-exports.permanentRedirect =
-exports.redirect = function (location, status) {
-    status = status || 301;
-    // TODO assure that the location is fully qualified
+exports.redirect = function (request, location, status, tree) {
+
+    // request.permanent gets set by Permanent middleware
+    status = status || (request.permanent ? 301 : 307);
+
+    // ascertain that the location is absolute, per spec
+    location = URL.resolve(request.url, location);
+
+    // redirect into a subtree with the remaining unrouted
+    // portion of the path, if so configured
+    if (tree) {
+        location = URL.resolve(
+            location,
+            request.pathInfo.replace(/^\//, "")
+        );
+    }
 
     return {
         "status": status,
@@ -522,8 +586,26 @@ exports.redirect = function (location, status) {
     };
 };
 
-exports.temporaryRedirect = function (location, status) {
-    return exports.redirect(location, status || 307);
+exports.Proxy = function (app) {
+    if (typeof app === "string") {
+        var location = app;
+        app = function (request) {
+            request.url = location;
+            return request;
+        };
+    }
+    return function (request, response) {
+        return Q.when(app.apply(this, arguments), function (request) {
+            return HTTP.request(request);
+        });
+    };
+};
+
+exports.ProxyTree = function (url) {
+    return exports.Proxy(function (request) {
+        request.url = URL.resolve(url, request.pathInfo.replace(/^\//, ""));
+        return request;
+    });
 };
 
 /// branch on HTTP method
@@ -625,10 +707,12 @@ exports.require = function (id, _require) {
  * @param {App} app
  * @returns {App}
  */
-exports.Error = function (app) {
+exports.Error = function (app, debug) {
     return function (request, response) {
         return Q.when(app(request, response), null, function (error) {
-            return J_UTIL.responseForStatus(500, error.stack || error);
+            if (!debug)
+                error = undefined;
+            return J_UTIL.responseForStatus(500, error && error.stack || error);
         });
     };
 };
@@ -718,7 +802,7 @@ exports.Time = function (app) {
  * @param {Object} headers
  * @param {App} app decorated application.
  */
-exports.Headers = function (headers, app) {
+exports.Headers = function (app, headers) {
     return function (request, response) {
         return Q.when(app(request, response), function (response) {
             if (response && response.headers) {
@@ -786,7 +870,6 @@ exports.json = function (content, visitor, tabs) {
  * @param {Function(Request, Object):Response} app
  * @returns {App}
  */
-exports.PostContent =
 exports.ContentRequest = function (app) {
     return function (request, response) {
         return Q.when(request.body, function (body) {
@@ -802,7 +885,6 @@ exports.ContentRequest = function (app) {
  * @param {App} badRequest
  * @returns {App}
  */
-exports.PostJson =
 exports.JsonRequest = function (app, badRequest) {
     if (!badRequest)
         badRequest = exports.badRequest;
@@ -944,7 +1026,7 @@ exports.PathSession = function (Session) {
 
 /**
  * Returns the response of the first application that returns a
- * non-404 resposne status.
+ * non-404 response status.
  *
  * @param {Array * App} apps a cascade of applications to try
  * successively until one of them returns a non-404 status.
