@@ -106,6 +106,7 @@ var inspect = require("sys").inspect;
 
 // jaque
 var J_UTIL = require("./lib/util");
+var QS = require("./lib/querystring");
 var COOKIE = require("./lib/cookie");
 
 /**
@@ -217,12 +218,12 @@ exports.Branch = function (paths, notFound) {
         if (!/^\//.test(request.pathInfo)) {
             return notFound(request, response);
         }
-        var path = request.pathInfo.substring(1);
+        var path = request.pathInfo.slice(1);
         var parts = path.split("/");
         var part = decodeURIComponent(parts.shift());
         if (N_UTIL.has(paths, part)) {
             request.scriptName = request.scriptName + part + "/";
-            request.pathInfo = path.substring(part.length);
+            request.pathInfo = path.slice(part.length);
             return N_UTIL.get(paths, part)(request, response);
         }
         return notFound(request, response);
@@ -312,7 +313,7 @@ exports.FileTree = function (root, options) {
             exports.temporaryRedirect
         );
         return Q.when(root, function (root) {
-            var path = FS.join(root, request.pathInfo.substring(1));
+            var path = FS.join(root, request.pathInfo.slice(1));
             return Q.when(FS.canonical(path), function (canonical) {
                 if (!FS.contains(root, canonical))
                     return options.notFound(request, response);
@@ -511,8 +512,7 @@ exports.TemporaryRedirectTree = function (location, status) {
  * @param {Number} status (optional) default is `307`
  * @returns {App}
  */
-exports.Redirect = function (path, status, tree) {
-    path = path || "";
+exports.Redirect = function (location, status, tree) {
     return function (request, response) {
         return exports.redirect(request, location, status, tree);
     };
@@ -523,8 +523,7 @@ exports.Redirect = function (path, status, tree) {
  * @param {Number} status (optional) default is `307`
  * @returns {App}
  */
-exports.RedirectTree = function (path, status) {
-    path = path || "";
+exports.RedirectTree = function (location, status) {
     return function (request, response) {
         return exports.redirect(request, location, status, true);
     };
@@ -935,7 +934,7 @@ exports.CookieSession = function (Session) {
         }
     }
     return function (request, response) {
-        var cookie = COOKIE.parse(request.headers["cookie"]);
+        var cookie = QS.parse(request.headers["cookie"], /[;,]/g);
         var sessionIds = cookie["session.id"];
         if (!Array.isArray(sessionIds))
             sessionIds = [sessionIds];
@@ -974,7 +973,7 @@ exports.CookieSession = function (Session) {
             sessions[session.id] = session;
             session.route = Session(session);
             var response = exports.TemporaryRedirect(request.scriptInfo + "~session/")(request, response);
-            response.headers["set-cookie"] = COOKIE.format(
+            response.headers["set-cookie"] = COOKIE.stringify(
                 "session.id", session.id, {
                     "path": request.scriptInfo
                 }
@@ -1016,8 +1015,8 @@ exports.PathSession = function (Session) {
             return exports.Json(function (request, response) {
                 return session;
             })(request, response);
-        } else if (N_UTIL.has(sessions, request.pathInfo.substring(1))) {
-            return N_UTIL.get(sessions, request.pathInfo.substring(1)).route(request, response);
+        } else if (N_UTIL.has(sessions, request.pathInfo.slice(1))) {
+            return N_UTIL.get(sessions, request.pathInfo.slice(1)).route(request, response);
         } else {
             return exports.responseForStatus(404, "Session does not exist");
         }
@@ -1070,4 +1069,169 @@ exports.methodNotAllowed = J_UTIL.appForStatus(405);
  */
 exports.noLanguage = 
 exports.notAcceptable = J_UTIL.appForStatus(406);
+
+exports.RedirectTrap = function (app, maxRedirects) {
+    maxRedirects = maxRedirects || 20;
+    return function (request, response) {
+        var remaining = maxRedirects;
+        var deferred = Q.defer();
+        var self = this;
+        var args = arguments;
+
+        request = HTTP.normalizeRequest(request);
+
+        // try redirect loop
+        function next() {
+            Q.call(function () {
+                return app(request, response);
+            })
+            .then(function (response) {
+                if (exports.isRedirect(response)) {
+                    if (remaining--) {
+                        request.url = response.headers.location;
+                        next();
+                    } else {
+                        throw new Error("Maximum redirects.");
+                    }
+                } else {
+                    deferred.resolve(response);
+                }
+            })
+            .fail(deferred.reject)
+        }
+        next();
+
+        return deferred.promise;
+    };
+};
+
+exports.isRedirect = function (response) {
+    return isRedirect[response.status] || false;
+};
+
+var isRedirect = {
+    301: true,
+    302: true,
+    303: true,
+    307: true
+};
+
+exports.CookieJar = function (app) {
+    var hostCookies = {}; // to {} of pathCookies to [] of cookies
+    return function (request) {
+        if (request.host && hostCookies[request.host]) {
+
+            // delete expired cookies
+            for (var host in hostCookies) {
+                var pathCookies = hostCookies[host];
+                for (var path in pathCookies) {
+                    var cookies = pathCookies[path];
+                    for (var name in cookies) {
+                        var cookie = cookies[name];
+                        if (cookie.expires && cookie.expires > now) {
+                            delete cookie[name];
+                        }
+                    }
+                }
+            }
+
+            // collect applicable cookies
+            var requestCookies = concat(
+                Object.keys(hostCookies)
+                .map(function (host) {
+                    if (!hostContains(host, request.host))
+                        return [];
+                    var pathCookies = hostCookies[host];
+                    return concat(
+                        Object.keys(pathCookies)
+                        .map(function (path) {
+                            if (!pathContains(path, request.path))
+                                return [];
+                            var cookies = pathCookies[path];
+                            return (
+                                Object.keys(cookies)
+                                .map(function (name) {
+                                    return cookies[name];
+                                })
+                                .filter(function (cookie) {
+                                    return cookie.secure ?
+                                        request.ssl :
+                                        true;
+                                })
+                            );
+                        })
+                    )
+                })
+            );
+
+            request.headers["cookie"] = (
+                requestCookies
+                .map(function (cookie) {
+                    return COOKIE.stringify(
+                        cookie.key,
+                        cookie.value,
+                        cookie
+                    );
+                })
+                .join("; ")
+            );
+        }
+
+        return Q.when(app.apply(this, arguments), function (response) {
+            response.headers = response.headers || {};
+            if (response.headers["set-cookie"]) {
+                var host = "." + request.host + (
+                    request.port ? ":" + request.port : ""
+                );
+                // normalize to array
+                if (!Array.isArray(response.headers["set-cookie"])) {
+                    response.headers["set-cookie"] = [response.headers["set-cookie"]];
+                }
+                response.headers["set-cookie"].forEach(function (cookie) {
+                    cookie = COOKIE.parse(cookie);
+                    // ignore illegal host
+                    if (cookie.host && !hostContains(host, cookie.host))
+                        delete cookie.host;
+                    var host = host || cookie.host;
+                    var path = cookie.path || "/";
+                    var pathCookies = hostCookies[host] = hostCookies[host] || {};
+                    var cookies = pathCookies[path] = pathCookies[path] || {};
+                    cookies[cookie.name] = cookie.value;
+                })
+                delete response.headers["set-cookie"];
+            }
+
+            return response;
+        });
+
+    };
+};
+
+function hostContains(container, content) {
+    if (/^\./.test(container)) {
+        return (
+            content.lastIndexOf(container) ===
+            content.length - container.length
+        ) || (
+            container.slice(1) === content
+        );
+    } else {
+        return container === content;
+    }
+};
+
+function pathContains(container, content) {
+    if (/^\/$/.test(container)) {
+        return content.indexOf(container) === 0;
+    } else {
+        return (
+            content === container ||
+            content.indexOf(container + "/") === 0
+        );
+    }
+}
+
+function concat(arrays) {
+    return [].concat.apply([], arrays);
+}
 

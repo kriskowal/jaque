@@ -2,6 +2,15 @@
 History
 -------
 
+## 1.1.0
+
+-   Added ``RedirectTrap`` and ``CookieJar`` for HTTP
+    clients.
+
+    ```javascript
+    var request = CookieJar(RedirectTrap(HTTP.request));
+    ```
+
 ## 1.0.0 - Backward Incompatible Changes
 
 -   ``End`` is now ``Cap``
