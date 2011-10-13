@@ -2,6 +2,11 @@
 History
 -------
 
+## 1.2.0
+
+-   Added ``Normalize`` middleware for request and response
+    normalization.
+
 ## 1.1.0
 
 -   Added ``RedirectTrap`` and ``CookieJar`` for HTTP

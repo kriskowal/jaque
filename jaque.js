@@ -1070,6 +1070,15 @@ exports.methodNotAllowed = J_UTIL.appForStatus(405);
 exports.noLanguage = 
 exports.notAcceptable = J_UTIL.appForStatus(406);
 
+exports.Normalize = function (app) {
+    return function (request, response) {
+        var request = HTTP.normalizeRequest(request);
+        return when(app(request, response), function (response) {
+            return HTTP.normalizeResponse(response);
+        });
+    };
+};
+
 exports.RedirectTrap = function (app, maxRedirects) {
     maxRedirects = maxRedirects || 20;
     return function (request, response) {
