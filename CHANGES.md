@@ -2,7 +2,7 @@
 History
 -------
 
-## Next
+## 1.2.1
 
 -   Fixes to CookieJar for regarding expiration and domain
     and path matching.
