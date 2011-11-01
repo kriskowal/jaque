@@ -2,7 +2,7 @@
 History
 -------
 
-## Next Minor
+## 1.3.0
 
 -   Added ParseQuery adapter.
 
