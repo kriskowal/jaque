@@ -2,6 +2,10 @@
 History
 -------
 
+## Next Minor
+
+-   Added ParseQuery adapter.
+
 ## 1.2.2
 
 -   Fixed problem in the HTTP layer for pathInfo including

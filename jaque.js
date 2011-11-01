@@ -62,7 +62,9 @@
         Permanent
         Date
     Adapters:
-        PostJson
+        ParseQuery
+        ContentRequest
+        JsonRequest
         Json
         Inspect
     Producers:
@@ -862,6 +864,15 @@ exports.json = function (content, visitor, tabs) {
 };
 
 /**
+ */
+exports.ParseQuery = function (app) {
+    return function (request, response) {
+        request.query = QS.parse(URL.parse(request.url).query || "");
+        return app(request, response);
+    };
+};
+
+/**
  * Wraps an app such that it expects to receive content
  * in the request body and passes that content as a string
  * to as the second argument to the wrapped JSGI app.
@@ -871,10 +882,8 @@ exports.json = function (content, visitor, tabs) {
  */
 exports.ContentRequest = function (app) {
     return function (request, response) {
-        return Q.when(request.body, function (body) {
-            return Q.when(body.read(), function (body) {
-                return app(body, request, response);
-            });
+        return Q.when(request.body.read(), function (body) {
+            return app(body, request, response);
         });
     };
 };

@@ -2,13 +2,14 @@
 var HTTP = require("q-http");
 var JAQUE = require("jaque");
 HTTP.Server(
-    JAQUE.Log(
-        JAQUE.Error(
-            JAQUE.FileTree(
-                module.directory || __dirname,
-                {
-                    redirectSymbolicLinks: true
-                }
+    JAQUE.ParseQuery(
+        JAQUE.Log(
+            JAQUE.Error(
+                JAQUE.Normalize(
+                    function (request) {
+                        return JSON.stringify(request.query, null, 4);
+                    }
+                )
             )
         )
     )
