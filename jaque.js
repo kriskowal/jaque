@@ -1073,7 +1073,7 @@ exports.notAcceptable = J_UTIL.appForStatus(406);
 exports.Normalize = function (app) {
     return function (request, response) {
         var request = HTTP.normalizeRequest(request);
-        return when(app(request, response), function (response) {
+        return Q.when(app(request, response), function (response) {
             return HTTP.normalizeResponse(response);
         });
     };
@@ -1128,7 +1128,12 @@ var isRedirect = {
 exports.CookieJar = function (app) {
     var hostCookies = {}; // to {} of pathCookies to [] of cookies
     return function (request) {
-        if (request.host && hostCookies[request.host]) {
+
+        var hosts = allHostsContaining(request.headers.host);
+
+        var now = new Date();
+
+        var requestCookies = concat(hosts.map(function (host) {
 
             // delete expired cookies
             for (var host in hostCookies) {
@@ -1145,10 +1150,10 @@ exports.CookieJar = function (app) {
             }
 
             // collect applicable cookies
-            var requestCookies = concat(
+            return concat(
                 Object.keys(hostCookies)
                 .map(function (host) {
-                    if (!hostContains(host, request.host))
+                    if (!hostContains(host, request.headers.host))
                         return [];
                     var pathCookies = hostCookies[host];
                     return concat(
@@ -1173,6 +1178,9 @@ exports.CookieJar = function (app) {
                 })
             );
 
+        }));
+
+        if (requestCookies.length) {
             request.headers["cookie"] = (
                 requestCookies
                 .map(function (cookie) {
@@ -1189,23 +1197,26 @@ exports.CookieJar = function (app) {
         return Q.when(app.apply(this, arguments), function (response) {
             response.headers = response.headers || {};
             if (response.headers["set-cookie"]) {
-                var host = "." + request.host + (
-                    request.port ? ":" + request.port : ""
-                );
+                var requestHost = ipRe.test(request.headers.host) ?
+                    request.headers.host :
+                    "." + request.headers.host;
                 // normalize to array
                 if (!Array.isArray(response.headers["set-cookie"])) {
                     response.headers["set-cookie"] = [response.headers["set-cookie"]];
                 }
                 response.headers["set-cookie"].forEach(function (cookie) {
-                    cookie = COOKIE.parse(cookie);
+                    var date = response.headers["date"] ?
+                        new Date(response.headers["date"]) :
+                        new Date();
+                    cookie = COOKIE.parse(cookie, date);
                     // ignore illegal host
-                    if (cookie.host && !hostContains(host, cookie.host))
+                    if (cookie.host && !hostContains(requestHost, cookie.host))
                         delete cookie.host;
-                    var host = host || cookie.host;
+                    var host = requestHost || cookie.host;
                     var path = cookie.path || "/";
                     var pathCookies = hostCookies[host] = hostCookies[host] || {};
                     var cookies = pathCookies[path] = pathCookies[path] || {};
-                    cookies[cookie.name] = cookie.value;
+                    cookies[cookie.key] = cookie;
                 })
                 delete response.headers["set-cookie"];
             }
@@ -1216,8 +1227,28 @@ exports.CookieJar = function (app) {
     };
 };
 
+var ipRe = /^\d+\.\d+\.\d+\.\d+$/;
+
+function allHostsContaining(content) {
+    if (ipRe.test(content)) {
+        return [content];
+    } if (content === "localhost") {
+        return [content];
+    } else {
+        var parts = content.split(".");
+        var hosts = [];
+        while (parts.length > 1) {
+            hosts.push("." + parts.join("."));
+            parts.shift();
+        }
+        return hosts;
+    }
+}
+
 function hostContains(container, content) {
-    if (/^\./.test(container)) {
+    if (ipRe.test(container) || ipRe.test(content)) {
+        return container === content;
+    } else if (/^\./.test(container)) {
         return (
             content.lastIndexOf(container) ===
             content.length - container.length

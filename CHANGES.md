@@ -2,6 +2,11 @@
 History
 -------
 
+## Next
+
+-   Fixes to CookieJar for regarding expiration and domain
+    and path matching.
+
 ## 1.2.0
 
 -   Added ``Normalize`` middleware for request and response
