@@ -1,6 +1,6 @@
 {
     "name": "jaque",
-    "version": "1.2.1",
+    "version": "1.2.2",
     "description": "Q HTTP Begin-, Middle-, and End-wares",
     "keywords": [
         "http",
@@ -32,7 +32,7 @@
     "dependencies": {
         "n-util": "0.0.1",
         "q": "0.7.2",
-        "q-http": "0.1.10",
+        "q-http": "0.1.11",
         "q-fs": "0.1.19",
         "mime": "1.2.4",
         "mimeparse": "0.1.3",

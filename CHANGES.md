@@ -2,6 +2,11 @@
 History
 -------
 
+## 1.2.2
+
+-   Fixed problem in the HTTP layer for pathInfo including
+    the search/query.
+
 ## 1.2.1
 
 -   Fixes to CookieJar for regarding expiration and domain
