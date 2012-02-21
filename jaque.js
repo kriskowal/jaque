@@ -89,7 +89,7 @@
         json
     Utility:
         etag
-        
+
 */
 
 var N_UTIL = require("n-util");
@@ -100,11 +100,16 @@ var FS = require("q-fs");
 var URL = require("url");
 var MIME_PARSE = require("mimeparse");
 var MIME_TYPES = require("mime");
-var UUID = require("uuid");
+//var UUID = require("uuid");
+var UUID = {
+    generate: function () {
+        return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    }
+};
 
 // node
 var URL = require("url");
-var inspect = require("sys").inspect;
+var inspect = require("util").inspect;
 
 // jaque
 var J_UTIL = require("./lib/util");
@@ -131,7 +136,7 @@ exports.Cap = function (app, notFound) {
             return app(request, response);
         } else {
             return notFound(request, response);
-        } 
+        }
     };
 };
 
@@ -734,20 +739,20 @@ exports.Log = function (app, log, stamp) {
         var remoteHost =
             request.remoteHost + ":" +
             request.remotePort;
-        var requestLine = 
+        var requestLine =
             request.method + " " +
             request.path + " " +
             "HTTP/" + request.version.join(".");
         log(stamp(
             remoteHost + " " +
-            "-->     " + 
+            "-->     " +
             requestLine
         ));
         return Q.when(app(request, response), function (response) {
             if (response) {
                 log(stamp(
                     remoteHost + " " +
-                    "<== " + 
+                    "<== " +
                     response.status + " " +
                     requestLine + " " +
                     (response.headers["content-length"] || "-")
@@ -756,7 +761,7 @@ exports.Log = function (app, log, stamp) {
                 log(stamp(
                     remoteHost + " " +
                     "... " +
-                    "... " + 
+                    "... " +
                     requestLine + " (response undefined / presumed streaming)"
                 ));
             }
@@ -764,7 +769,7 @@ exports.Log = function (app, log, stamp) {
         }, function (reason) {
             log(stamp(
                 remoteHost + " " +
-                "!!!     " + 
+                "!!!     " +
                 requestLine + " " +
                 (reason && reason.message || reason)
             ));
@@ -774,7 +779,7 @@ exports.Log = function (app, log, stamp) {
 };
 
 /**
- * Decorates a Q-JSGI application such that all responses have an 
+ * Decorates a Q-JSGI application such that all responses have an
  * X-Response-Time header with the time between the request and the
  * response in milliseconds, not including any time needed to stream
  * the body to the client.
@@ -1076,7 +1081,7 @@ exports.methodNotAllowed = J_UTIL.appForStatus(405);
 /**
  * {App} an application that returns a 405 response.
  */
-exports.noLanguage = 
+exports.noLanguage =
 exports.notAcceptable = J_UTIL.appForStatus(406);
 
 exports.Normalize = function (app) {
